@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101014">
+<title>POWER VOICE 1000</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{color-scheme:dark;--bg:#101014;--panel:#1b1b23;--red:#ff334f;--muted:#aaa}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#17131a,#09090c);color:#fff;font:16px system-ui,Arial}
+main{max-width:520px;margin:auto;padding:22px 16px 40px}
+header{text-align:center;padding:18px 0 22px}
+.logo{font-size:30px;font-weight:900;letter-spacing:1.5px}.logo span{color:var(--red)}
+.sub{color:var(--muted);font-size:13px}
+.panel{background:var(--panel);border:1px solid #30303a;border-radius:18px;padding:17px;margin:13px 0}
+h2{font-size:17px;margin:0 0 14px}
+button{border:0;border-radius:13px;padding:14px 16px;font-weight:750;font-size:15px;background:var(--red);color:white;width:100%;margin:5px 0;cursor:pointer}
+button.secondary{background:#34343e}button:disabled{opacity:.45}
+.status{text-align:center;color:#ffc4cc;font-size:13px;min-height:20px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.modes button{background:#34343e;margin:0}.modes button.active{background:#a91f36;outline:2px solid #ff7184}
+label{display:flex;justify-content:space-between;color:#ddd;font-size:14px;margin:15px 0 6px}
+input[type=range]{width:100%;accent-color:var(--red)}
+.note{font-size:12px;line-height:1.5;color:#bdbdc7}
+audio{width:100%;margin-top:10px}
+</style>
+</head>
+<body><main>
+<header><div class="logo">POWER <span>VOICE</span> 1000</div><div class="sub">Voice recording • Bass • Studio • Clear</div></header>
+<section class="panel">
+<h2>1. Choose a voice effect</h2>
+<div class="modes">
+<button class="active" data-mode="bass">DEEP BASS</button>
+<button data-mode="studio">STUDIO MIC</button>
+<button data-mode="clear">POWER CLEAR</button>
+<button data-mode="natural">NATURAL</button>
+</div>
+<label for="strength">Effect strength <b id="strengthVal">65%</b></label>
+<input id="strength" type="range" min="0" max="100" value="65">
+</section>
+<section class="panel">
+<h2>2. Record your voice</h2>
+<button id="record">● Start recording</button>
+<button id="stop" class="secondary" disabled>Stop recording</button>
+<div class="status" id="status">Ready. Allow microphone access when asked.</div>
+<audio id="player" controls hidden></audio>
+<button id="download" class="secondary" disabled>Download edited recording</button>
+<button id="share" class="secondary" disabled>Share recording</button>
+</section>
+<section class="panel">
+<h2>How to use</h2>
+<p class="note">Select an effect, record a short test, then download or share the processed audio in WhatsApp. The effect is applied to the recording, not to a live WhatsApp or normal phone call.</p>
+<p class="note">For best results, use headphones while monitoring. Keep the volume comfortable; “1000 power” is a style name, not a literal volume boost.</p>
+</section>
+</main>
+<script>
+let mode='bass', stream, ctx, source, nodes=[], recorder, chunks=[], processedBlob=null, audioChunks=[];
+const $=id=>document.getElementById(id);
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{
+ document.querySelectorAll('[data-mode]').forEach(x=>x.classList.remove('active'));
+ b.classList.add('active'); mode=b.dataset.mode;
+}));
+$('strength').addEventListener('input',()=> $('strengthVal').textContent=$('strength').value+'%');
+function makeChain(input, destination){
+ const strength=Number($('strength').value)/100;
+ const low=ctx.createBiquadFilter(); low.type='lowshelf'; low.frequency.value=150;
+ const mid=ctx.createBiquadFilter(); mid.type='peaking'; mid.frequency.value=900; mid.Q.value=0.8;
+ const high=ctx.createBiquadFilter(); high.type='highshelf'; high.frequency.value=4500;
+ const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-24; comp.knee.value=22; comp.ratio.value=3; comp.attack.value=.004; comp.release.value=.18;
+ if(mode==='bass'){low.gain.value=10*strength;mid.gain.value=-2*strength;high.gain.value=-1*strength}
+ else if(mode==='studio'){low.gain.value=3*strength;mid.gain.value=2*strength;high.gain.value=4*strength}
+ else if(mode==='clear'){low.gain.value=-1*strength;mid.gain.value=2*strength;high.gain.value=3*strength}
+ else {low.gain.value=0;mid.gain.value=0;high.gain.value=0}
+ input.connect(low);low.connect(mid);mid.connect(high);high.connect(comp);comp.connect(destination);
+ nodes=[low,mid,high,comp];
+}
+$('record').onclick=async()=>{
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  source=ctx.createMediaStreamSource(stream);
+  const dest=ctx.createMediaStreamDestination(); makeChain(source,dest);
+  const mime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
+  recorder=new MediaRecorder(dest.stream,{mimeType:mime});chunks=[];
+  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  recorder.onstop=()=>{processedBlob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});const url=URL.createObjectURL(processedBlob);$('player').src=url;$('player').hidden=false;$('download').disabled=false;$('share').disabled=false;$('status').textContent='Recording ready. Listen, download, or share it.';};
+  recorder.start();$('record').disabled=true;$('stop').disabled=false;$('status').textContent='Recording… speak clearly.';
+ }catch(e){$('status').textContent='Microphone unavailable. Use HTTPS and allow microphone permission.'}
+};
+$('stop').onclick=()=>{if(recorder&&recorder.state!=='inactive')recorder.stop();stream?.getTracks().forEach(t=>t.stop());ctx?.close();$('record').disabled=false;$('stop').disabled=true};
+$('download').onclick=()=>{if(!processedBlob)return;const a=document.createElement('a');a.href=URL.createObjectURL(processedBlob);a.download='power-voice-1000.webm';a.click();};
+$('share').onclick=async()=>{if(!processedBlob)return;const file=new File([processedBlob],'power-voice-1000.webm',{type:processedBlob.type});try{if(navigator.canShare&&navigator.canShare({files:[file]}))await navigator.share({files:[file],title:'POWER VOICE 1000 recording'});else $('status').textContent='Tap Download, then attach the file in WhatsApp.'}catch(e){}};
+</script>
+</body></html>

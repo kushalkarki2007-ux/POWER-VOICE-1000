@@ -1,0 +1,8 @@
+{
+  "name": "POWER VOICE 1000",
+  "short_name": "POWER VOICE",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#101014",
+  "theme_color": "#101014"
+}
